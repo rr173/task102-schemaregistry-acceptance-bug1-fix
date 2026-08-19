@@ -11,7 +11,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"math"
 	"regexp"
 	"sort"
 )
@@ -312,14 +311,16 @@ func matchType(t FieldType, v interface{}) bool {
 	return false
 }
 
-// exactInteger converts a JSON number to int64 without passing through
-// float64, which would lose precision for values above 2^53.
+// exactInteger converts a JSON number to int64 by parsing its decimal text
+// directly, never passing through float64, which would lose precision for
+// values above 2^53. Fractional and non-decimal forms (e.g. 1.5, 1e3) are
+// rejected as non-integers.
 func exactInteger(n json.Number) (int64, bool) {
-	f, err := n.Float64()
-	if err != nil || math.IsInf(f, 0) || math.Trunc(f) != f {
+	i, err := n.Int64()
+	if err != nil {
 		return 0, false
 	}
-	return int64(f), true
+	return i, true
 }
 
 func typeReason(t FieldType) string {

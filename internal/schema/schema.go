@@ -11,6 +11,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"regexp"
 	"sort"
 )
@@ -158,11 +159,11 @@ func normalizeDefault(t FieldType, raw json.RawMessage) (json.RawMessage, error)
 		if !ok {
 			return nil, fmt.Errorf("期望整数")
 		}
-		i, ok := exactInteger(n)
+		s, ok := exactInteger(n)
 		if !ok {
-			return nil, fmt.Errorf("期望整数，得到小数或超出 int64 范围")
+			return nil, fmt.Errorf("期望整数，得到小数或非十进制形式")
 		}
-		return json.Marshal(i)
+		return json.RawMessage(s), nil
 	case TypeNumber:
 		n, ok := v.(json.Number)
 		if !ok {
@@ -311,16 +312,20 @@ func matchType(t FieldType, v interface{}) bool {
 	return false
 }
 
-// exactInteger converts a JSON number to int64 by parsing its decimal text
-// directly, never passing through float64, which would lose precision for
-// values above 2^53. Fractional and non-decimal forms (e.g. 1.5, 1e3) are
-// rejected as non-integers.
-func exactInteger(n json.Number) (int64, bool) {
-	i, err := n.Int64()
-	if err != nil {
-		return 0, false
+// exactInteger returns the canonical decimal text of an integer JSON number.
+// It parses the number's decimal form with arbitrary precision (math/big), so
+// values beyond the JavaScript safe-integer range (above 2^53) — and even
+// beyond int64 — keep their exact digits. The text is produced from the
+// parsed value rather than the raw bytes, so equal values always share one
+// canonical form (e.g. -0 becomes 0); it never passes through float64, which
+// would lose precision for values above 2^53. Fractional and non-decimal
+// forms (e.g. 1.5, 1e3) are rejected as non-integers.
+func exactInteger(n json.Number) (string, bool) {
+	bi, ok := new(big.Int).SetString(string(n), 10)
+	if !ok {
+		return "", false
 	}
-	return i, true
+	return bi.String(), true
 }
 
 func typeReason(t FieldType) string {
